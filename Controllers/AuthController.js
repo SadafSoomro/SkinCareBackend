@@ -179,7 +179,7 @@ export const updateUserProfile = async (req, res) => {
 
     if (user) {
         user.name = req.body.name || user.name;
-        user.email = req.body.email || user.email;
+        // email is locked and cannot be updated
         user.phone = req.body.phone || user.phone;
         if (req.body.password) {
             user.password = req.body.password;
@@ -267,4 +267,52 @@ export const resetPassword = async (req, res) => {
         message: 'Password reset successful',
         token: generateToken(user._id)
     });
+};
+
+// @desc    Get all users
+// @route   GET /auth/users
+// @access  Private
+export const getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find({});
+        res.json(users);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Delete user
+// @route   DELETE /auth/users/:id
+// @access  Private
+export const deleteUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (user) {
+            await User.deleteOne({ _id: user._id });
+            res.json({ message: 'User removed' });
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Update user by admin
+// @route   PUT /auth/users/:id
+// @access  Private
+export const updateUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (user) {
+            user.name = req.body.name || user.name;
+            user.role = req.body.role || user.role;
+            const updatedUser = await user.save();
+            res.json(updatedUser);
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };
