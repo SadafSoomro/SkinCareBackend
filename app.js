@@ -5,6 +5,8 @@ import categoryRouter from './Routes/CategoryRouter.js';
 import bannerRouter from './Routes/BannerRoutes.js';
 import productRouter from './Routes/ProductRoutes.js';
 import authRouter from './Routes/AuthRoutes.js';
+import couponRouter from './Routes/CouponRoutes.js';
+import orderRouter from './Routes/OrderRoutes.js';
 
 const app = express();
 
@@ -42,6 +44,8 @@ app.use('/categories', categoryRouter);
 app.use('/banners', bannerRouter);
 app.use('/products', productRouter);
 app.use('/auth', authRouter);
+app.use('/coupons', couponRouter);
+app.use('/orders', orderRouter);
 
 
 

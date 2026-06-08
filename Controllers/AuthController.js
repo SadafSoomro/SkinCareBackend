@@ -3,6 +3,7 @@ import PendingUser from '../Models/PendingUserSchema.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import sendEmail from '../Utils/sendEmail.js';
+import Order from '../Models/OrderSchema.js';
 
 // Generate JWT
 const generateToken = (id) => {
@@ -263,10 +264,46 @@ export const resetPassword = async (req, res) => {
     await user.save();
 
     res.status(200).json({
-        success: true,
-        message: 'Password reset successful',
-        token: generateToken(user._id)
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        isVerified: user.isVerified,
+        token: generateToken(user._id),
+        message: 'Password reset successful'
     });
+};
+
+// @desc    Resend OTP for registration
+// @route   POST /auth/resend-otp
+// @access  Public
+export const resendOTP = async (req, res) => {
+    const { email } = req.body;
+
+    try {
+        const pendingUser = await PendingUser.findOne({ email });
+        if (!pendingUser) {
+            return res.status(404).json({ message: 'No pending registration found for this email' });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        pendingUser.otp = otp;
+        pendingUser.otpExpire = Date.now() + 10 * 60 * 1000;
+        await pendingUser.save();
+
+        console.log(`Resent Verification OTP for ${email}: ${otp}`);
+
+        await sendEmail({
+            email,
+            subject: 'SkinCare - Email Verification',
+            message: `Your verification code is: ${otp}. It will expire in 10 minutes.`
+        });
+
+        res.status(200).json({ success: true, message: 'Verification code resent to email' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };
 
 // @desc    Get all users
@@ -274,7 +311,7 @@ export const resetPassword = async (req, res) => {
 // @access  Private
 export const getAllUsers = async (req, res) => {
     try {
-        const users = await User.find({});
+        const users = await User.find({}).select('-password');
         res.json(users);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -314,5 +351,152 @@ export const updateUser = async (req, res) => {
         }
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Send order confirmation email
+// @route   POST /auth/order-confirmation
+// @access  Private
+export const sendOrderConfirmation = async (req, res) => {
+    const { orderTrackingNumber, cartItems, subtotal, discountAmount, discountPercent, promoCode, shippingFee, grandTotal, paymentMethod, shippingInfo } = req.body;
+
+    try {
+        const user = req.user;
+        const recipientEmail = shippingInfo?.email || user?.email || 'admin@makskin.com';
+        const recipientName = shippingInfo?.name || user?.name || 'Customer';
+
+        if (!user && !recipientEmail) {
+            return res.status(404).json({ message: 'User not found and no email provided' });
+        }
+
+        // Save order to database
+        try {
+            await Order.create({
+                trackingNumber: orderTrackingNumber,
+                user: req.user._id,
+                items: (cartItems || []).map(item => ({
+                    productId: String(item.id),
+                    name: item.name,
+                    brand: item.brand || '',
+                    img: item.img || '',
+                    price: item.price,
+                    quantity: item.quantity,
+                })),
+                subtotal: Number(subtotal),
+                discountAmount: Number(discountAmount) || 0,
+                discountPercent: Number(discountPercent) || 0,
+                promoCode: promoCode || '',
+                shippingFee: Number(shippingFee) || 0,
+                grandTotal: Number(grandTotal),
+                paymentMethod: paymentMethod || 'cod',
+                shippingInfo: shippingInfo || {},
+                status: 'pending',
+            });
+        } catch (orderErr) {
+            console.error('Failed to save order to DB:', orderErr.message);
+            // Don't block the email — just log
+        }
+
+        const paymentLabel =
+            paymentMethod === 'cod' ? 'Cash on Delivery (COD)' :
+            paymentMethod === 'card' ? 'Credit / Debit Card' : 'Bank Transfer';
+
+        const itemRows = (cartItems || []).map(item => `
+            <tr>
+                <td style="padding:10px 8px;border-bottom:1px solid #f0e6d3;">
+                    <strong>${item.name}</strong><br/>
+                    <small style="color:#888;">${item.brand}</small>
+                </td>
+                <td style="padding:10px 8px;border-bottom:1px solid #f0e6d3;text-align:center;">${item.quantity}</td>
+                <td style="padding:10px 8px;border-bottom:1px solid #f0e6d3;text-align:right;">Rs.${(item.price * item.quantity).toLocaleString()}</td>
+            </tr>
+        `).join('');
+
+        const htmlMessage = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8"/>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+            <title>Order Confirmation</title>
+        </head>
+        <body style="margin:0;padding:0;background:#fdf8f3;font-family:'Segoe UI',Arial,sans-serif;">
+            <div style="max-width:600px;margin:30px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+                <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);padding:36px 32px;text-align:center;">
+                    <h1 style="color:#fff;margin:0;font-size:28px;letter-spacing:2px;font-weight:800;">makskin</h1>
+                    <p style="color:#e8b89a;margin:8px 0 0;font-size:13px;letter-spacing:1px;text-transform:uppercase;">Premium Beauty &amp; Skincare</p>
+                </div>
+                <div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:20px 32px;">
+                    <h2 style="color:#16a34a;margin:0 0 4px;font-size:18px;">&#x2705; Order Confirmed!</h2>
+                    <p style="color:#555;margin:0;font-size:14px;">Your order has been successfully placed and is being processed.</p>
+                </div>
+                <div style="padding:28px 32px;">
+                    <p style="color:#444;font-size:15px;margin:0 0 20px;">Hi <strong>${recipientName}</strong>, thank you for shopping with us! &#x1F389;</p>
+                    <div style="background:#fdf8f3;border-radius:12px;padding:20px;margin-bottom:24px;">
+                        <table style="width:100%;border-collapse:collapse;">
+                            <tr>
+                                <td style="padding:6px 0;color:#888;font-size:13px;">Order ID</td>
+                                <td style="padding:6px 0;text-align:right;font-weight:700;color:#1a1a2e;font-size:14px;">${orderTrackingNumber}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:6px 0;color:#888;font-size:13px;">Payment</td>
+                                <td style="padding:6px 0;text-align:right;font-weight:600;color:#444;font-size:13px;">${paymentLabel}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:6px 0;color:#888;font-size:13px;">Estimated Delivery</td>
+                                <td style="padding:6px 0;text-align:right;font-weight:600;color:#444;font-size:13px;">3 - 5 Business Days</td>
+                            </tr>
+                            ${shippingInfo ? `<tr><td style="padding:6px 0;color:#888;font-size:13px;">Ship To</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#444;font-size:13px;">${shippingInfo.address}, ${shippingInfo.city}</td></tr>` : ''}
+                        </table>
+                    </div>
+                    <h3 style="color:#1a1a2e;font-size:15px;margin:0 0 12px;border-bottom:2px solid #f0e6d3;padding-bottom:8px;">Order Items</h3>
+                    <table style="width:100%;border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:#fdf8f3;">
+                                <th style="padding:10px 8px;text-align:left;color:#888;font-size:12px;font-weight:600;text-transform:uppercase;">Product</th>
+                                <th style="padding:10px 8px;text-align:center;color:#888;font-size:12px;font-weight:600;text-transform:uppercase;">Qty</th>
+                                <th style="padding:10px 8px;text-align:right;color:#888;font-size:12px;font-weight:600;text-transform:uppercase;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>${itemRows}</tbody>
+                    </table>
+                    <div style="margin-top:20px;border-top:2px solid #f0e6d3;padding-top:16px;">
+                        <table style="width:100%;border-collapse:collapse;">
+                            <tr>
+                                <td style="padding:5px 0;color:#666;font-size:13px;">Subtotal</td>
+                                <td style="padding:5px 0;text-align:right;color:#444;font-size:13px;">Rs.${Number(subtotal).toLocaleString()}</td>
+                            </tr>
+                            ${Number(discountAmount) > 0 ? `<tr><td style="padding:5px 0;color:#16a34a;font-size:13px;">Discount (${discountPercent}%${promoCode ? ` "${promoCode}"` : ''})</td><td style="padding:5px 0;text-align:right;color:#16a34a;font-size:13px;">- Rs.${Number(discountAmount).toLocaleString()}</td></tr>` : ''}
+                            <tr>
+                                <td style="padding:5px 0;color:#666;font-size:13px;">Shipping</td>
+                                <td style="padding:5px 0;text-align:right;color:#444;font-size:13px;">${Number(shippingFee) === 0 ? 'FREE' : `Rs.${Number(shippingFee).toLocaleString()}`}</td>
+                            </tr>
+                            <tr style="border-top:2px solid #e5e7eb;">
+                                <td style="padding:12px 0 5px;color:#1a1a2e;font-size:16px;font-weight:700;">Total Paid</td>
+                                <td style="padding:12px 0 5px;text-align:right;color:#1a1a2e;font-size:18px;font-weight:800;">Rs.${Number(grandTotal).toLocaleString()} PKR</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <p style="color:#888;font-size:13px;margin:24px 0 0;text-align:center;">Questions? Contact our support team. We will keep you updated on your shipment.</p>
+                </div>
+                <div style="background:#1a1a2e;padding:20px 32px;text-align:center;">
+                    <p style="color:#888;margin:0;font-size:12px;">&#169; 2026 Makskin. All rights reserved.</p>
+                    <p style="color:#666;margin:6px 0 0;font-size:11px;">100% Authentic Products &#x2022; Easy Returns &#x2022; Secure Payment</p>
+                </div>
+            </div>
+        </body>
+        </html>`;
+
+        await sendEmail({
+            email: recipientEmail,
+            subject: `Makskin - Order Confirmed! (${orderTrackingNumber})`,
+            message: `Your order ${orderTrackingNumber} has been placed successfully. Total: Rs.${Number(grandTotal).toLocaleString()} PKR.`,
+            html: htmlMessage
+        });
+
+        res.status(200).json({ success: true, message: 'Order confirmation email sent' });
+    } catch (error) {
+        console.error('Order confirmation email error:', error.message);
+        res.status(500).json({ message: 'Could not send confirmation email', error: error.message });
     }
 };
