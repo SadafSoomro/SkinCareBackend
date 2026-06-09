@@ -1,0 +1,7 @@
+PORT=5000
+MONGO_URI=mongodb+srv://sadafsoomro990:settimeout@cluster0.uy4t4f0.mongodb.net/ecommerce
+CLOUDINARY_CLOUD_NAME=dp8wgpl1z
+CLOUDINARY_API_KEY=477892214923453
+CLOUDINARY_API_SECRET=BZOdL_mjg7JjkG69OBoujezcjQo
+JWT_SECRET=mySuperSecretKey
+EMAIL_USER=sadafsoomro990@gmail.com
