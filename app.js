@@ -10,6 +10,8 @@ import orderRouter from './Routes/OrderRoutes.js';
 
 const app = express();
 
+console.log('hi')
+
 // Middleware
 app.use(cors());
 app.use(express.json());
