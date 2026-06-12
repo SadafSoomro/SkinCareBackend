@@ -7,6 +7,8 @@ import productRouter from './Routes/ProductRoutes.js';
 import authRouter from './Routes/AuthRoutes.js';
 import couponRouter from './Routes/CouponRoutes.js';
 import orderRouter from './Routes/OrderRoutes.js';
+import paymentRouter from './Routes/PaymentRoutes.js';
+import chatRouter from './Routes/ChatRoutes.js';
 
 const app = express();
 
@@ -48,6 +50,8 @@ app.use('/products', productRouter);
 app.use('/auth', authRouter);
 app.use('/coupons', couponRouter);
 app.use('/orders', orderRouter);
+app.use('/payments', paymentRouter);
+app.use('/chat', chatRouter);
 
 
 

@@ -85,3 +85,42 @@ export const deleteOrder = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+// @desc    Get logged in user orders
+// @route   GET /orders/my-orders
+// @access  Private
+export const getMyOrders = async (req, res) => {
+    try {
+        const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
+        res.json(orders);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Cancel order (only if pending)
+// @route   PUT /orders/my-orders/:id/cancel
+// @access  Private
+export const cancelMyOrder = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+        
+        // Ensure user owns the order
+        if (order.user.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to cancel this order' });
+        }
+
+        if (order.status !== 'pending') {
+            return res.status(400).json({ message: 'Only pending orders can be cancelled' });
+        }
+
+        order.status = 'cancelled';
+        const updated = await order.save();
+        res.json(updated);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};

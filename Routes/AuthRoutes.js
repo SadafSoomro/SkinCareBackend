@@ -11,7 +11,8 @@ import {
     getAllUsers,
     updateUser,
     deleteUser,
-    sendOrderConfirmation
+    sendOrderConfirmation,
+    googleLogin
 } from '../Controllers/AuthController.js';
 import { protect, admin } from '../Middleware/AuthMiddleware.js';
 
@@ -19,6 +20,7 @@ const router = express.Router();
 
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+router.post('/google-login', googleLogin);
 router.post('/verify-otp', verifyOTP);
 router.post('/resend-otp', resendOTP);
 router.get('/profile', protect, getUserProfile);

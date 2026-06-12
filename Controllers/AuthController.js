@@ -1,5 +1,6 @@
 import User from '../Models/UserSchema.js';
 import PendingUser from '../Models/PendingUserSchema.js';
+import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import sendEmail from '../Utils/sendEmail.js';
@@ -487,16 +488,62 @@ export const sendOrderConfirmation = async (req, res) => {
         </body>
         </html>`;
 
-        await sendEmail({
-            email: recipientEmail,
-            subject: `Makskin - Order Confirmed! (${orderTrackingNumber})`,
-            message: `Your order ${orderTrackingNumber} has been placed successfully. Total: Rs.${Number(grandTotal).toLocaleString()} PKR.`,
-            html: htmlMessage
-        });
-
-        res.status(200).json({ success: true, message: 'Order confirmation email sent' });
+        try {
+            await sendEmail({
+                email: recipientEmail,
+                subject: `Makskin - Order Confirmed! (${orderTrackingNumber})`,
+                message: `Your order ${orderTrackingNumber} has been placed successfully. Total: Rs.${Number(grandTotal).toLocaleString()} PKR.`,
+                html: htmlMessage
+            });
+            res.status(200).json({ success: true, message: 'Order confirmation email sent' });
+        } catch (emailError) {
+            console.error('Order confirmation email error:', emailError.message);
+            // Email failed but order is placed
+            res.status(200).json({ success: true, message: 'Order placed successfully, but email could not be sent' });
+        }
     } catch (error) {
-        console.error('Order confirmation email error:', error.message);
-        res.status(500).json({ message: 'Could not send confirmation email', error: error.message });
+        console.error('Order processing error:', error.message);
+        res.status(500).json({ message: 'Could not process order', error: error.message });
+    }
+};
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// @desc    Google Login
+// @route   POST /auth/google-login
+// @access  Public
+export const googleLogin = async (req, res) => {
+    const { token } = req.body;
+    try {
+        const ticket = await client.verifyIdToken({
+            idToken: token,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+        const { name, email, sub } = ticket.getPayload();
+        
+        let user = await User.findOne({ email });
+        
+        if (!user) {
+            user = await User.create({
+                name,
+                email,
+                password: crypto.randomBytes(16).toString('hex'),
+                phone: '0000000000',
+                isVerified: true
+            });
+        }
+        
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+            isVerified: user.isVerified,
+            token: generateToken(user._id),
+        });
+    } catch (error) {
+        console.error('Google login error:', error);
+        res.status(401).json({ message: 'Invalid Google Token' });
     }
 };
