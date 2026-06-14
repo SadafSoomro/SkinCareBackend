@@ -1,36 +1,38 @@
 import Message from '../Models/MessageSchema.js';
 import User from '../Models/UserSchema.js';
+import mongoose from 'mongoose';
 
-// @desc    Get chat history between current user and admin
+// @desc    Get chat history between a user and admin
 // @route   GET /chat/history/:userId
 // @access  Private
 export const getChatHistory = async (req, res) => {
     try {
         const { userId } = req.params;
-        
-        // Either the requester is the user, or the requester is an admin
-        if (req.user._id.toString() !== userId && req.user.role !== 'admin') {
+
+        // Either the requester is the user themselves, or the requester is an admin
+        const requesterId = req.user._id.toString();
+        if (requesterId !== userId && req.user.role !== 'admin') {
             return res.status(403).json({ message: 'Not authorized' });
         }
 
+        // Find all messages between this user and admin (in both directions)
         const messages = await Message.find({
-            $or: [
-                { senderId: userId, receiverId: 'admin' },
-                { senderId: 'admin', receiverId: userId } // Actually, admin senderId might be the admin's ObjectId, but we can treat 'admin' as a generic receiver/sender for simplicity.
-            ]
-        }).sort({ createdAt: 1 });
-
-        // For flexibility, if admin sends a message, they might send with senderId = adminId and receiverId = userId
-        // Let's modify the query to handle both cases where admin is identified by 'admin' or their role.
-        // Easiest is: if senderId is the user, or receiverId is the user.
-        const allMessages = await Message.find({
             $or: [
                 { senderId: userId },
                 { receiverId: userId }
             ]
         }).sort({ createdAt: 1 });
 
-        res.json(allMessages);
+        // Deduplicate by _id
+        const seen = new Set();
+        const unique = messages.filter(m => {
+            const id = m._id.toString();
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+
+        res.json(unique);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -41,22 +43,52 @@ export const getChatHistory = async (req, res) => {
 // @access  Private/Admin
 export const getChatContacts = async (req, res) => {
     try {
-        // Find all distinct senderIds where receiver is admin
-        const messages = await Message.find({});
-        const userIds = new Set();
-        
+        const adminId = req.user._id.toString();
+
+        const messages = await Message.find({}).sort({ createdAt: 1 });
+        const userStats = {};
+
         messages.forEach(msg => {
-            if (msg.senderId && msg.senderId.toString() !== req.user._id.toString()) {
-                userIds.add(msg.senderId.toString());
+            const senderId = msg.senderId?.toString();
+            const receiverId = msg.receiverId?.toString();
+            let contactId = null;
+
+            if (senderId && senderId !== adminId && receiverId === 'admin') {
+                contactId = senderId;
+            } else if (receiverId && receiverId !== 'admin' && receiverId !== adminId && senderId === adminId) {
+                contactId = receiverId;
+            } else if (senderId && senderId !== adminId) {
+                contactId = senderId;
             }
-            if (msg.receiverId && msg.receiverId !== 'admin' && msg.receiverId.toString() !== req.user._id.toString()) {
-                userIds.add(msg.receiverId.toString());
+
+            if (contactId) {
+                if (!userStats[contactId]) {
+                    userStats[contactId] = { unread: 0, lastMessage: null };
+                }
+                userStats[contactId].lastMessage = msg;
+                if (msg.receiverId === 'admin' && !msg.isRead) {
+                    userStats[contactId].unread += 1;
+                }
             }
         });
 
-        const users = await User.find({ _id: { $in: Array.from(userIds) } }).select('name email');
-        
-        res.json(users);
+        const validIds = Object.keys(userStats).filter(id => mongoose.Types.ObjectId.isValid(id));
+        const users = await User.find({ _id: { $in: validIds } }).select('name email role');
+
+        const nonAdminUsers = users.filter(u => u.role !== 'admin').map(u => ({
+            ...u.toObject(),
+            unreadCount: userStats[u._id.toString()].unread,
+            lastMessage: userStats[u._id.toString()].lastMessage
+        }));
+
+        // Sort contacts by last message time (newest first)
+        nonAdminUsers.sort((a, b) => {
+            const timeA = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+            const timeB = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+            return timeB - timeA;
+        });
+
+        res.json(nonAdminUsers);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

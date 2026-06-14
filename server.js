@@ -54,6 +54,21 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Admin marks messages from a user as read
+    socket.on('mark_read', async ({ userId }) => {
+        try {
+            await Message.updateMany(
+                { senderId: userId, receiverId: 'admin', isRead: false },
+                { $set: { isRead: true } }
+            );
+            // Notify the user their messages were seen
+            io.to(userId.toString()).emit('messages_seen', { userId });
+            console.log(`Messages from ${userId} marked as read`);
+        } catch (error) {
+            console.error('Mark read error:', error);
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
     });
