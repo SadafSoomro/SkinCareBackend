@@ -33,13 +33,17 @@ const OrderSchema = new mongoose.Schema({
         default: 'cod',
     },
     shippingInfo: {
+        firstName: String,
+        lastName: String,
         address: String,
         city: String,
         zipCode: String,
+        phone: String,
+        email: String,
     },
     status: {
         type: String,
-        enum: ['pending', 'confirmed', 'cancelled'],
+        enum: ['pending', 'confirmed', 'delivered', 'cancelled'],
         default: 'pending',
     },
 }, {
