@@ -9,6 +9,8 @@ import couponRouter from './Routes/CouponRoutes.js';
 import orderRouter from './Routes/OrderRoutes.js';
 import paymentRouter from './Routes/PaymentRoutes.js';
 import chatRouter from './Routes/ChatRoutes.js';
+import saleRouter from './Routes/SaleRoutes.js';
+import reviewRouter from './Routes/ReviewRoutes.js';
 
 const app = express();
 
@@ -52,6 +54,8 @@ app.use('/coupons', couponRouter);
 app.use('/orders', orderRouter);
 app.use('/payments', paymentRouter);
 app.use('/chat', chatRouter);
+app.use('/sales', saleRouter);
+app.use('/reviews', reviewRouter);
 
 
 
